@@ -22,9 +22,25 @@
         .custom-scrollbar::-webkit-scrollbar-track { background: #f8fafc; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; border: 3px solid #f8fafc; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Hiệu ứng loading ban đầu */
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            z-index: 9999;
+            font-family: sans-serif;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #4f46e5;
+            letter-spacing: 0.1em;
+        }
     </style>
 
-    <!-- Import Map để quản lý module đồng nhất, tránh lỗi "Two Reacts" -->
+    <!-- Import Map: Đảm bảo tất cả thư viện dùng chung 1 instance React -->
     <script type="importmap">
     {
       "imports": {
@@ -40,9 +56,9 @@
     </script>
 </head>
 <body>
+    <div id="loading-screen">Đang nạp hệ thống báo cáo...</div>
     <div id="root"></div>
 
-    <!-- Sử dụng type="text/babel" và data-type="module" để Babel xử lý JSX và module import -->
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
         import ReactDOM from 'react-dom/client';
@@ -58,8 +74,14 @@
         } from 'lucide-react';
 
         // --- CẤU HÌNH FIREBASE ---
+        // Tự động sử dụng cấu hình trống nếu không chạy trong môi trường Canvas
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            apiKey: "", authDomain: "", projectId: "", storageBucket: "", messagingSenderId: "", appId: ""
+            apiKey: "AIzaSyAs-FakeKeyForDemo",
+            authDomain: "demo.firebaseapp.com",
+            projectId: "demo-project",
+            storageBucket: "demo.appspot.com",
+            messagingSenderId: "12345",
+            appId: "1:12345:web:6789"
         };
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -640,6 +662,10 @@
               setUser(u);
               if (u) setLoading(false);
             });
+            // Gỡ loading screen ban đầu
+            const loader = document.getElementById('loading-screen');
+            if (loader) loader.style.display = 'none';
+
             return () => unsubscribe();
           }, []);
 
@@ -793,7 +819,7 @@
                   if (!newData[row.id]) newData[row.id] = { ...DEFAULT_ROW_B02 };
                   DATA_KEYS_B02.forEach(k => {
                     if (k !== 'note') {
-                      newData[row.id][k] = row.formula.reduce((acc, code) => acc + getVal(code, k), 0);
+                      newData[row.id][k] = row.formula.reduce((acc, code) => acc + getVal(code, key), 0);
                     }
                   });
                 }
@@ -1058,8 +1084,6 @@
           const handleLogout = () => {
             setAuthSession(null); setSelectedUnit(null); setViewMode('entry'); setLoginForm({ username: '', password: '' });
           };
-
-          if (loading) return <div className="h-screen flex items-center justify-center font-black text-indigo-500 uppercase tracking-widest animate-pulse">Đang nạp cơ sở dữ liệu...</div>;
 
           if (!authSession) {
             return (
