@@ -42,7 +42,7 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; border: 3px solid #f8fafc; }
     </style>
 
-    <!-- Import Map: Sử dụng duy nhất nguồn esm.sh để tránh lỗi Component registration -->
+    <!-- Import Map: Sử dụng đồng bộ phiên bản Firebase để tránh lỗi "auth has not been registered" -->
     <script type="importmap">
     {
       "imports": {
@@ -60,13 +60,9 @@
 <body>
     <div id="loading-screen">
         <div class="spinner"></div>
-        <div id="loading-text" style="font-weight: bold; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.1em; text-align:center; padding: 0 20px;">
+        <div id="loading-text" style="font-weight: bold; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.1em; text-align:center;">
             Đang nạp hệ thống báo cáo...
         </div>
-        <!-- Nút dự phòng nếu bị treo quá lâu -->
-        <button id="skip-loader" style="display:none; margin-top: 20px; padding: 10px 20px; background: #ef4444; color: white; border-radius: 8px; font-weight: bold; font-size: 12px; text-transform: uppercase;">
-            Bỏ qua nạp dữ liệu (Vào giao diện)
-        </button>
     </div>
     <div id="root"></div>
 
@@ -78,109 +74,470 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
         import * as LucideIcons from 'lucide-react';
 
-        // Destructure icons
+        // Destructure icons từ thư viện
         const { 
-          Save, CheckCircle2, Calculator, FileText, TableProperties, ClipboardCheck, Plus, Trash2, 
-          LogOut, User, ShieldCheck, Search, BarChart3, RefreshCcw, AlertTriangle, FileDown, Clock
+          Save, Download, ChevronRight, CheckCircle2, Calculator, FileText, 
+          TableProperties, ClipboardCheck, Plus, Trash2, LogOut, Lock, 
+          User, ShieldCheck, Loader2, AlertCircle, XCircle, Clock, Search, 
+          BarChart3, RefreshCcw, AlertTriangle, Eraser, History, CalendarDays,
+          FileDown
         } = LucideIcons;
 
-        // --- CẤU HÌNH FIREBASE AN TOÀN ---
-        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) 
-            ? JSON.parse(__firebase_config) 
-            : { apiKey: "demo", authDomain: "demo", projectId: "demo" };
-
-        const appId = (typeof __app_id !== 'undefined' && __app_id) ? __app_id : 'b01-f01-final-cascade-2025';
-
-        // Khởi tạo Firebase trong try-catch để không treo script
-        let app, auth, db;
-        try {
-            app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-        } catch (e) {
-            console.error("Lỗi khởi tạo Firebase:", e);
+        // --- SETUP BIẾN MÔI TRƯỜNG GIẢ LẬP ĐỂ CHẠY TRÊN GITHUB ---
+        if (typeof window.__firebase_config === 'undefined') {
+            window.__firebase_config = JSON.stringify({
+                apiKey: "demo-key",
+                authDomain: "demo.firebaseapp.com",
+                projectId: "demo-project",
+                storageBucket: "demo.appspot.com",
+                messagingSenderId: "00000",
+                appId: "0:0000:web:0000"
+            });
         }
+        const __app_id_val = typeof __app_id !== 'undefined' ? __app_id : 'b01-f01-final-cascade-2025';
+
+        // --- NỘI DUNG GỐC FILE (1)22.4.BCQT.txt ---
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = __app_id_val;
 
         const UNITS = [
           "Văn phòng Bộ", "Văn phòng Quốc gia dân tộc và miền núi", "Ban Tôn giáo Chính phủ",
           "Ban QLDA EMPS", "Ban QLDA PEMU", "Trung tâm Chuyển đổi số",
           "Tạp chí Nghiên cứu Dân tộc và Tôn giáo", "Nhà khách Dân tộc",
           "Trường Phổ thông Vùng cao Việt Bắc", "Trường Dự bị Đại học Dân tộc Trung ương",
-          "Trường Phổ thông Vùng cao", "Trường Dự bị Đại học Dân tộc Sầm Sơn", 
-          "Trường Dự bị Đại học Dân tộc Trung ương Nha Trang",
+          "Trường Dự bị Đại học Dân tộc Sầm Sơn", "Trường Dự bị Đại học Dân tộc Trung ương Nha Trang",
           "Trường Dự bị Đại học Thành phố Hồ Chí Minh", "Học viện Dân tộc", "Báo Vietnamnet",
           "Thanh tra Bộ", "Nhà xuất bản Tôn giáo", "Ban quản lý các Dự án đầu tư chuyên ngành xây dựng"
         ];
 
-        // --- MLNS LOGIC (Giữ nguyên từ file của bạn) ---
         const MLNS_TEMPLATE = (loai, khoan, prefix) => [
           { id: `${prefix}_6000`, loai, khoan, muc: '6000', label: 'Tiền lương', isSum: true, formula: [`${prefix}_6001`, `${prefix}_6003`, `${prefix}_6049`] },
           { id: `${prefix}_6001`, loai, khoan, tmuc: '6001', label: 'Tiền lương' },
           { id: `${prefix}_6003`, loai, khoan, tmuc: '6003', label: 'Lương hợp đồng theo chế độ' },
           { id: `${prefix}_6049`, loai, khoan, tmuc: '6049', label: 'Lương khác' },
-          { id: `${prefix}_6050`, loai, khoan, muc: '6050', label: 'Tiền công trả cho lao động', isSum: true, formula: [`${prefix}_6051`, `${prefix}_6099`] },
-          { id: `${prefix}_6051`, loai, khoan, tmuc: '6051', label: 'Tiền công thường xuyên' },
+          { id: `${prefix}_6050`, loai, khoan, muc: '6050', label: 'Tiền công trả cho lao động vị trí việc làm', isSum: true, formula: [`${prefix}_6051`, `${prefix}_6099`] },
+          { id: `${prefix}_6051`, loai, khoan, tmuc: '6051', label: 'Tiền công thường xuyên theo hợp đồng' },
           { id: `${prefix}_6099`, loai, khoan, tmuc: '6099', label: 'Tiền công khác' },
           { id: `${prefix}_6100`, loai, khoan, muc: '6100', label: 'Phụ cấp lương', isSum: true, formula: [`${prefix}_6101`, `${prefix}_6102`, `${prefix}_6103`, `${prefix}_6105`, `${prefix}_6107`, `${prefix}_6111`, `${prefix}_6112`, `${prefix}_6113`, `${prefix}_6114`, `${prefix}_6115`, `${prefix}_6116`, `${prefix}_6121`, `${prefix}_6122`, `${prefix}_6123`, `${prefix}_6124`, `${prefix}_6149`] },
           { id: `${prefix}_6101`, loai, khoan, tmuc: '6101', label: 'Phụ cấp chức vụ' },
           { id: `${prefix}_6102`, loai, khoan, tmuc: '6102', label: 'Phụ cấp khu vực' },
           { id: `${prefix}_6103`, loai, khoan, tmuc: '6103', label: 'Phụ cấp thu hút' },
-          { id: `${prefix}_6105`, loai, khoan, tmuc: '6105', label: 'Phụ cấp làm đêm' },
-          { id: `${prefix}_6107`, loai, khoan, tmuc: '6107', label: 'Phụ cấp độc hại' },
-          { id: `${prefix}_6111`, loai, khoan, tmuc: '6111', label: 'Hoạt động phí' },
+          { id: `${prefix}_6105`, loai, khoan, tmuc: '6105', label: 'Phụ cấp làm đêm; làm thêm giờ' },
+          { id: `${prefix}_6107`, loai, khoan, tmuc: '6107', label: 'Phụ cấp nặng nhọc, độc hại, nguy hiểm' },
+          { id: `${prefix}_6111`, loai, khoan, tmuc: '6111', label: 'Hoạt động phí ĐBQH, HĐND' },
           { id: `${prefix}_6112`, loai, khoan, tmuc: '6112', label: 'Phụ cấp ưu đãi nghề' },
-          { id: `${prefix}_6113`, loai, khoan, tmuc: '6113', label: 'Phụ cấp trách nhiệm' },
+          { id: `${prefix}_6113`, loai, khoan, tmuc: '6113', label: 'Phụ cấp trách nhiệm theo nghề, theo công việc' },
           { id: `${prefix}_6114`, loai, khoan, tmuc: '6114', label: 'Phụ cấp trực' },
-          { id: `${prefix}_6115`, loai, khoan, tmuc: '6115', label: 'Phụ cấp thâm niên' },
-          { id: `${prefix}_6116`, loai, khoan, tmuc: '6116', label: 'Phụ cấp đặc biệt' },
-          { id: `${prefix}_6121`, loai, khoan, tmuc: '6121', label: 'Phụ cấp vùng đặc biệt khó khăn' },
+          { id: `${prefix}_6115`, loai, khoan, tmuc: '6115', label: 'Phụ cấp thâm niên vượt khung; phụ cấp thâm niên nghề' },
+          { id: `${prefix}_6116`, loai, khoan, tmuc: '6116', label: 'Phụ cấp đặc biệt của ngành' },
+          { id: `${prefix}_6121`, loai, khoan, tmuc: '6121', label: 'Phụ cấp công tác lâu năm ở vùng có điều kiện kinh tế - xã hội đặc biệt khó khăn' },
           { id: `${prefix}_6122`, loai, khoan, tmuc: '6122', label: 'Phụ cấp theo loại xã' },
-          { id: `${prefix}_6123`, loai, khoan, tmuc: '6123', label: 'Phụ cấp công tác Đảng' },
+          { id: `${prefix}_6123`, loai, khoan, tmuc: '6123', label: 'Phụ cấp công tác Đảng, Đoàn thể chính trị - xã hội' },
           { id: `${prefix}_6124`, loai, khoan, tmuc: '6124', label: 'Phụ cấp công vụ' },
           { id: `${prefix}_6149`, loai, khoan, tmuc: '6149', label: 'Phụ cấp khác' },
-          { id: `${prefix}_6150`, loai, khoan, muc: '6150', label: 'Học bổng và hỗ trợ học tập', isSum: true, formula: [`${prefix}_6151`, `${prefix}_6152`, `${prefix}_6154`, `${prefix}_6155`, `${prefix}_6156`, `${prefix}_6157`, `${prefix}_6199` ] },
-          { id: `${prefix}_6151`, loai, khoan, tmuc: '6151', label: 'Học bổng trong nước' },
-          { id: `${prefix}_6152`, loai, khoan, tmuc: '6152', label: 'Dân tộc nội trú' },
-          { id: `${prefix}_6154`, loai, khoan, tmuc: '6154', label: 'Du học nước ngoài' },
-          { id: `${prefix}_6155`, loai, khoan, tmuc: '6155', label: 'Sinh hoạt phí đi học' },
-          { id: `${prefix}_6156`, loai, khoan, tmuc: '6156', label: 'Hỗ trợ học phí' },
-          { id: `${prefix}_6157`, loai, khoan, tmuc: '6157', label: 'Chi phí học tập' },
-          { id: `${prefix}_6199`, loai, khoan, tmuc: '6199', label: 'Hỗ trợ khác' },
+          { id: `${prefix}_6150`, loai, khoan, muc: '6150', label: 'Học bổng và hỗ trợ khác cho học sinh, sinh viên, cán bộ đi học', isSum: true, formula: [`${prefix}_6151`, `${prefix}_6152`, `${prefix}_6154`, `${prefix}_6155`, `${prefix}_6156`, `${prefix}_6157`, `${prefix}_6199` ] },
+          { id: `${prefix}_6151`, loai, khoan, tmuc: '6151', label: 'Học bổng học sinh, sinh viên học trong nước (không bao gồm học sinh dân tộc nội trú)' },
+          { id: `${prefix}_6152`, loai, khoan, tmuc: '6152', label: 'Học sinh dân tộc nội trú' },
+          { id: `${prefix}_6154`, loai, khoan, tmuc: '6154', label: 'Học sinh, sinh viên đi học nước ngoài' },
+          { id: `${prefix}_6155`, loai, khoan, tmuc: '6155', label: 'Sinh hoạt phí cán bộ đi học' },
+          { id: `${prefix}_6156`, loai, khoan, tmuc: '6156', label: 'Hỗ trợ đối tượng chính sách đóng học phí' },
+          { id: `${prefix}_6157`, loai, khoan, tmuc: '6157', label: 'Hỗ trợ đối tượng chính sách chi phí học tập' },
+          { id: `${prefix}_6199`, loai, khoan, tmuc: '6199', label: 'Các khoản hỗ trợ khác' },
           { id: `${prefix}_6200`, loai, khoan, muc: '6200', label: 'Tiền thưởng', isSum: true, formula: [`${prefix}_6201`, `${prefix}_6202`, `${prefix}_6249`] },
           { id: `${prefix}_6201`, loai, khoan, tmuc: '6201', label: 'Thưởng thường xuyên' },
           { id: `${prefix}_6202`, loai, khoan, tmuc: '6202', label: 'Thưởng đột xuất' },
           { id: `${prefix}_6249`, loai, khoan, tmuc: '6249', label: 'Thưởng khác' },
           { id: `${prefix}_6250`, loai, khoan, muc: '6250', label: 'Phúc lợi tập thể', isSum: true, formula: [`${prefix}_6251`, `${prefix}_6252`, `${prefix}_6253`, `${prefix}_6254`, `${prefix}_6299`] },
-          { id: `${prefix}_6251`, loai, khoan, tmuc: '6251', label: 'Trợ cấp thường xuyên' },
-          { id: `${prefix}_6252`, loai, khoan, tmuc: '6252', label: 'Trợ cấp đột xuất' },
-          { id: `${prefix}_6253`, loai, khoan, tmuc: '6253', label: 'Tiền tàu xe nghỉ phép' },
-          { id: `${prefix}_6254`, loai, khoan, tmuc: '6254', label: 'Tiền y tế cơ quan' },
-          { id: `${prefix}_6299`, loai, khoan, tmuc: '6299', label: 'Chi phúc lợi khác' },
+          { id: `${prefix}_6251`, loai, khoan, tmuc: '6251', label: 'Trợ cấp khó khăn thường xuyên' },
+          { id: `${prefix}_6252`, loai, khoan, tmuc: '6252', label: 'Trợ cấp khó khăn đột xuất' },
+          { id: `${prefix}_6253`, loai, khoan, tmuc: '6253', label: 'Tiền tàu xe nghỉ phép năm' },
+          { id: `${prefix}_6254`, loai, khoan, tmuc: '6254', label: 'Tiền y tế trong các cơ quan, đơn vị' },
+          { id: `${prefix}_6299`, loai, khoan, tmuc: '6299', label: 'Chi khác' },
           { id: `${prefix}_6300`, loai, khoan, muc: '6300', label: 'Các khoản đóng góp', isSum: true, formula: [`${prefix}_6301`, `${prefix}_6302`, `${prefix}_6303`, `${prefix}_6304`, `${prefix}_6349`] },
           { id: `${prefix}_6301`, loai, khoan, tmuc: '6301', label: 'BHXH' },
           { id: `${prefix}_6302`, loai, khoan, tmuc: '6302', label: 'BHYT' },
           { id: `${prefix}_6303`, loai, khoan, tmuc: '6303', label: 'Kinh phí công đoàn' },
           { id: `${prefix}_6304`, loai, khoan, tmuc: '6304', label: 'Bảo hiểm thất nghiệp' },
-          { id: `${prefix}_6349`, loai, khoan, tmuc: '6349', label: 'Đóng góp khác' },
-          { id: `${prefix}_6400`, loai, khoan, muc: '6400', label: 'Thanh toán khác cho cá nhân', isSum: true, formula: [`${prefix}_6401`, `${prefix}_6402`, `${prefix}_6403`, `${prefix}_6404`, `${prefix}_6449`] },
+          { id: `${prefix}_6349`, loai, khoan, tmuc: '6349', label: 'Các khoản đóng góp khác' },
+          { id: `${prefix}_6400`, loai, khoan, muc: '6400', label: 'Các khoản thanh toán khác cho cá nhân', isSum: true, formula: [`${prefix}_6401`, `${prefix}_6402`, `${prefix}_6403`, `${prefix}_6404`, `${prefix}_6449`] },
           { id: `${prefix}_6401`, loai, khoan, tmuc: '6401', label: 'Tiền ăn' },
-          { id: `${prefix}_6402`, loai, khoan, tmuc: '6402', label: 'Khám bệnh nước ngoài' },
-          { id: `${prefix}_6403`, loai, khoan, tmuc: '6403', label: 'Sinh hoạt phí nước ngoài' },
-          { id: `${prefix}_6404`, loai, khoan, tmuc: '6404', label: 'Thu nhập tăng thêm' },
-          { id: `${prefix}_6449`, loai, khoan, tmuc: '6449', label: 'Chi khác cho cá nhân' },
-          { id: `${prefix}_6500`, loai, khoan, muc: '6500', label: 'Dịch vụ công cộng', isSum: true, formula: [`${prefix}_6501`, `${prefix}_6502`, `${prefix}_6503`, `${prefix}_6504`, `${prefix}_6505`, `${prefix}_6549`] },
+          { id: `${prefix}_6402`, loai, khoan, tmuc: '6402', label: 'Chi khám chữa bệnh cho cán bộ, công chức Việt Nam làm việc ở nước ngoài' },
+          { id: `${prefix}_6403`, loai, khoan, tmuc: '6403', label: 'Sinh hoạt phí cho cán bộ, công chức Việt Nam làm việc ở nước ngoài' },
+          { id: `${prefix}_6404`, loai, khoan, tmuc: '6404', label: 'Chi thu nhập tăng thêm theo cơ chế khoán, tự chủ' },
+          { id: `${prefix}_6449`, loai, khoan, tmuc: '6449', label: 'Chi khác' },
+          { id: `${prefix}_6500`, loai, khoan, muc: '6500', label: 'Thanh toán dịch vụ công cộng', isSum: true, formula: [`${prefix}_6501`, `${prefix}_6502`, `${prefix}_6503`, `${prefix}_6504`, `${prefix}_6505`, `${prefix}_6549`] },
           { id: `${prefix}_6501`, loai, khoan, tmuc: '6501', label: 'Tiền điện' },
           { id: `${prefix}_6502`, loai, khoan, tmuc: '6502', label: 'Tiền nước' },
-          { id: `${prefix}_6503`, loai, khoan, tmuc: '6503', label: 'Nhiên liệu' },
-          { id: `${prefix}_6504`, loai, khoan, tmuc: '6504', label: 'Vệ sinh môi trường' },
-          { id: `${prefix}_6505`, loai, khoan, tmuc: '6505', label: 'Khoán phương tiện' },
+          { id: `${prefix}_6503`, loai, khoan, tmuc: '6503', label: 'Tiền nhiên liệu' },
+          { id: `${prefix}_6504`, loai, khoan, tmuc: '6504', label: 'Tiền vệ sinh môi trường' },
+          { id: `${prefix}_6505`, loai, khoan, tmuc: '6505', label: 'Tiền khoán phương tiện theo chế độ' },
           { id: `${prefix}_6549`, loai, khoan, tmuc: '6549', label: 'Chi khác' },
           { id: `${prefix}_6550`, loai, khoan, muc: '6550', label: 'Vật tư văn phòng', isSum: true, formula: [`${prefix}_6551`, `${prefix}_6552`, `${prefix}_6553`, `${prefix}_6599`] },
           { id: `${prefix}_6551`, loai, khoan, tmuc: '6551', label: 'Văn phòng phẩm' },
-          { id: `${prefix}_6552`, loai, khoan, tmuc: '6552', label: 'Công cụ dụng cụ VP' },
+          { id: `${prefix}_6552`, loai, khoan, tmuc: '6552', label: 'Mua sắm công cụ, dụng cụ văn phòng' },
           { id: `${prefix}_6553`, loai, khoan, tmuc: '6553', label: 'Khoán văn phòng phẩm' },
-          { id: `${prefix}_6599`, loai, khoan, tmuc: '6599', label: 'Vật tư khác' }
+          { id: `${prefix}_6599`, loai, khoan, tmuc: '6599', label: 'Vật tư văn phòng khác' },
+          { id: `${prefix}_6600`, loai, khoan, muc: '6600', label: 'Thông tin, tuyên truyền, liên lạc', isSum: true, formula: [`${prefix}_6601`, `${prefix}_6603`, `${prefix}_6605`, `${prefix}_6606`, `${prefix}_6608`, `${prefix}_6618`, `${prefix}_6649`] },
+          { id: `${prefix}_6601`, loai, khoan, tmuc: '6601', label: 'Cước phí điện thoại (không bao gồm khoán điện thoại), thuê bao đường điện thoại, fax' },
+          { id: `${prefix}_6603`, loai, khoan, tmuc: '6603', label: 'Cước phí bưu chính' },
+          { id: `${prefix}_6605`, loai, khoan, tmuc: '6605', label: 'Thuê bao kênh vệ tinh; thuê bao cáp truyền hình; cước phí Internet; thuê đường truyền mạng' },
+          { id: `${prefix}_6606`, loai, khoan, tmuc: '6606', label: 'Tuyên truyền, quảng cáo' },
+          { id: `${prefix}_6608`, loai, khoan, tmuc: '6608', label: 'Phim ảnh; ấn phẩm truyền thông; sách báo, tạp chí thư viện' },
+          { id: `${prefix}_6618`, loai, khoan, tmuc: '6618', label: 'Khoán điện thoại' },
+          { id: `${prefix}_6649`, loai, khoan, tmuc: '6649', label: 'Khác' },
+          { id: `${prefix}_6650`, loai, khoan, muc: '6650', label: 'Hội nghị', isSum: true, formula: [`${prefix}_6651`, `${prefix}_6652`, `${prefix}_6653`, `${prefix}_6654`, `${prefix}_6655`, `${prefix}_6658`, `${prefix}_6699`] },
+          { id: `${prefix}_6651`, loai, khoan, tmuc: '6651', label: 'In, mua tài liệu' },
+          { id: `${prefix}_6652`, loai, khoan, tmuc: '6652', label: 'Bồi dưỡng giảng viên, báo cáo viên' },
+          { id: `${prefix}_6653`, loai, khoan, tmuc: '6653', label: 'Tiền vé máy bay, tàu xe' },
+          { id: `${prefix}_6654`, loai, khoan, tmuc: '6654', label: 'Tiền thuê phòng ngủ' },
+          { id: `${prefix}_6655`, loai, khoan, tmuc: '6655', label: 'Thuê hội trường, phương tiện vận chuyển' },
+          { id: `${prefix}_6656`, loai, khoan, tmuc: '6656', label: 'Thuê phiên dịch, biên dịch' },
+          { id: `${prefix}_6657`, loai, khoan, tmuc: '6657', label: 'Các khoản thuê mướn khác' },
+          { id: `${prefix}_6658`, loai, khoan, tmuc: '6658', label: 'Chi bù tiền ăn' },
+          { id: `${prefix}_6699`, loai, khoan, tmuc: '6699', label: 'Chi phí khác' },
+          { id: `${prefix}_6700`, loai, khoan, muc: '6700', label: 'Công tác phí', isSum: true, formula: [`${prefix}_6701`, `${prefix}_6702`, `${prefix}_6703`, `${prefix}_6704`, `${prefix}_6705`, `${prefix}_6749`] },
+          { id: `${prefix}_6701`, loai, khoan, tmuc: '6701', label: 'Tiền vé máy bay, tàu, xe' },
+          { id: `${prefix}_6702`, loai, khoan, tmuc: '6702', label: 'Phụ cấp công tác phí' },
+          { id: `${prefix}_6703`, loai, khoan, tmuc: '6703', label: 'Tiền thuê phòng ngủ' },
+          { id: `${prefix}_6704`, loai, khoan, tmuc: '6704', label: 'Khoán công tác phí' },
+          { id: `${prefix}_6705`, loai, khoan, tmuc: '6705', label: 'Công tác phí của trưởng thôn, bản ở miền núi' },
+          { id: `${prefix}_6749`, loai, khoan, tmuc: '6749', label: 'Chi khác' },
+          { id: `${prefix}_6750`, loai, khoan, muc: '6750', label: 'Chi phí thuê mướn', isSum: true, formula: [`${prefix}_6751`, `${prefix}_6752`, `${prefix}_6754`, `${prefix}_6755`, `${prefix}_6756`, `${prefix}_6757`, `${prefix}_6758`, `${prefix}_6761`, `${prefix}_6799`] },
+          { id: `${prefix}_6751`, loai, khoan, tmuc: '6751', label: 'Thuê phương tiện vận chuyển' },
+          { id: `${prefix}_6752`, loai, khoan, tmuc: '6752', label: 'Thuê nhà, thuê đất' },
+          { id: `${prefix}_6754`, loai, khoan, tmuc: '6754', label: 'Thuê thiết bị các loại' },
+          { id: `${prefix}_6755`, loai, khoan, tmuc: '6755', label: 'Thuê chuyên gia và giảng viên nước ngoài' },
+          { id: `${prefix}_6756`, loai, khoan, tmuc: '6756', label: 'Thuê chuyên gia và giảng viên trong nước' },
+          { id: `${prefix}_6757`, loai, khoan, tmuc: '6757', label: 'Thuê lao động trong nước' },
+          { id: `${prefix}_6758`, loai, khoan, tmuc: '6758', label: 'Thuê đào tạo lại cán bộ' },
+          { id: `${prefix}_6761`, loai, khoan, tmuc: '6761', label: 'Thuê biên dịch, phiên dịch' },
+          { id: `${prefix}_6799`, loai, khoan, tmuc: '6799', label: 'Chi phí thuê mướn khác' },
+          { id: `${prefix}_6800`, loai, khoan, muc: '6800', label: 'Chi đoàn ra', isSum: true, formula: [`${prefix}_6801`, `${prefix}_6802`, `${prefix}_6803`, `${prefix}_6805`, `${prefix}_6806`, `${prefix}_6849`] },
+          { id: `${prefix}_6801`, loai, khoan, tmuc: '6801', label: 'Tiền vé tàu bay, tàu, xe, thuê xe' },
+          { id: `${prefix}_6802`, loai, khoan, tmuc: '6802', label: 'Tiền ăn và tiền tiêu vặt' },
+          { id: `${prefix}_6803`, loai, khoan, tmuc: '6803', label: 'Tiền thuê phòng ngủ' },
+          { id: `${prefix}_6805`, loai, khoan, tmuc: '6805', label: 'Phí, lệ phí liên quan' },
+          { id: `${prefix}_6806`, loai, khoan, tmuc: '6806', label: 'Khoán chi đoàn ra theo chế độ' },
+          { id: `${prefix}_6849`, loai, khoan, tmuc: '6849', label: 'Chi khác' },
+          { id: `${prefix}_6850`, loai, khoan, muc: '6850', label: 'Chi đoàn vào', isSum: true, formula: [`${prefix}_6851`, `${prefix}_6852`, `${prefix}_6853`, `${prefix}_6855`, `${prefix}_6899`] },
+          { id: `${prefix}_6851`, loai, khoan, tmuc: '6851', label: 'Tiền vé tàu bay, tàu, xe, thuê xe' },
+          { id: `${prefix}_6852`, loai, khoan, tmuc: '6852', label: 'Tiền ăn và tiền tiêu vặt' },
+          { id: `${prefix}_6853`, loai, khoan, tmuc: '6853', label: 'Tiền thuê phòng ngủ' },
+          { id: `${prefix}_6855`, loai, khoan, tmuc: '6855', label: 'Phí, lệ phí liên quan' },
+          { id: `${prefix}_6899`, loai, khoan, tmuc: '6899', label: 'Chi khác' },
+          { id: `${prefix}_6900`, loai, khoan, muc: '6900', label: 'Sửa chữa, duy tu tài sản chuyên môn', isSum: true, formula: [`${prefix}_6901`, `${prefix}_6902`, `${prefix}_6903`, `${prefix}_6905`, `${prefix}_6907`, `${prefix}_6912`, `${prefix}_6913`, `${prefix}_6918`, `${prefix}_6921`, `${prefix}_6922`, `${prefix}_6923`, `${prefix}_6949`] },
+          { id: `${prefix}_6901`, loai, khoan, tmuc: '6901', label: 'Ô tô dùng chung' },
+          { id: `${prefix}_6902`, loai, khoan, tmuc: '6902', label: 'Ô tô phục vụ chức danh' },
+          { id: `${prefix}_6903`, loai, khoan, tmuc: '6903', label: 'Ô tô chuyên dùng' },
+          { id: `${prefix}_6905`, loai, khoan, tmuc: '6905', label: 'Tài sản và thiết bị chuyên dùng' },
+          { id: `${prefix}_6907`, loai, khoan, tmuc: '6907', label: 'Nhà cửa' },
+          { id: `${prefix}_6912`, loai, khoan, tmuc: '6912', label: 'Các thiết bị công nghệ thông tin' },
+          { id: `${prefix}_6913`, loai, khoan, tmuc: '6913', label: 'Tài sản và thiết bị văn phòng' },
+          { id: `${prefix}_6918`, loai, khoan, tmuc: '6918', label: 'Công trình văn hóa, công viên, thể thao' },
+          { id: `${prefix}_6921`, loai, khoan, tmuc: '6921', label: 'Đường điện, cấp thoát nước' },
+          { id: `${prefix}_6922`, loai, khoan, tmuc: '6922', label: 'Đường sá, cầu cống, bến cảng, sân bay' },
+          { id: `${prefix}_6923`, loai, khoan, tmuc: '6923', label: 'Đê điều, hồ đập, kênh mương' },
+          { id: `${prefix}_6949`, loai, khoan, tmuc: '6949', label: 'Các tài sản và công trình hạ tầng cơ sở khác' },
+          { id: `${prefix}_6950`, loai, khoan, muc: '6950', label: 'Mua sắm tài sản chuyên môn', isSum: true, formula: [`${prefix}_6951`, `${prefix}_6952`, `${prefix}_6953`, `${prefix}_6954`, `${prefix}_6955`, `${prefix}_6956`, `${prefix}_6999`] },
+          { id: `${prefix}_6951`, loai, khoan, tmuc: '6951', label: 'Ô tô dùng chung' },
+          { id: `${prefix}_6952`, loai, khoan, tmuc: '6952', label: 'Ô tô phục vụ chức danh' },
+          { id: `${prefix}_6953`, loai, khoan, tmuc: '6953', label: 'Ô tô chuyên dùng' },
+          { id: `${prefix}_6954`, loai, khoan, tmuc: '6954', label: 'Tài sản và thiết bị chuyên dùng' },
+          { id: `${prefix}_6955`, loai, khoan, tmuc: '6955', label: 'Tài sản và thiết bị văn phòng' },
+          { id: `${prefix}_6956`, loai, khoan, tmuc: '6956', label: 'Các thiết bị công nghệ thông tin' },
+          { id: `${prefix}_6999`, loai, khoan, tmuc: '6999', label: 'Tài sản và thiết bị khác' },
+          { id: `${prefix}_7000`, loai, khoan, muc: '7000', label: 'Chi phí nghiệp vụ chuyên môn của từng ngành', isSum: true, formula: [`${prefix}_7001`, `${prefix}_7004`, `${prefix}_7008`, `${prefix}_7011`, `${prefix}_7012`, `${prefix}_7017`, `${prefix}_7018`, `${prefix}_7049`] },
+          { id: `${prefix}_7001`, loai, khoan, tmuc: '7001', label: 'Chi mua hàng hóa, vật tư' },
+          { id: `${prefix}_7004`, loai, khoan, tmuc: '7004', label: 'Đồng phục, trang phục; bảo hộ lao động' },
+          { id: `${prefix}_7008`, loai, khoan, tmuc: '7008', label: 'Chi mật phí' },
+          { id: `${prefix}_7011`, loai, khoan, tmuc: '7011', label: 'Chi nuôi phạm nhân, can phạm' },
+          { id: `${prefix}_7012`, loai, khoan, tmuc: '7012', label: 'Chi phí hoạt động nghiệp vụ chuyên ngành' },
+          { id: `${prefix}_7017`, loai, khoan, tmuc: '7017', label: 'Chi khoán thực hiện đề tài nghiên cứu khoa học' },
+          { id: `${prefix}_7018`, loai, khoan, tmuc: '7018', label: 'Hỗ trợ chi phí dịch vụ công chưa kết cấu vào giá' },
+          { id: `${prefix}_7049`, loai, khoan, tmuc: '7049', label: 'Chi khác' },
+          { id: `${prefix}_7050`, loai, khoan, muc: '7050', label: 'Mua sắm tài sản vô hình', isSum: true, formula: [`${prefix}_7051`, `${prefix}_7052`, `${prefix}_7053`, `${prefix}_7054`, `${prefix}_7099`] },
+          { id: `${prefix}_7051`, loai, khoan, tmuc: '7051', label: 'Mua bằng sáng chế' },
+          { id: `${prefix}_7052`, loai, khoan, tmuc: '7052', label: 'Mua bản quyền nhãn hiệu thương mại' },
+          { id: `${prefix}_7053`, loai, khoan, tmuc: '7053', label: 'Mua, bảo trì phần mềm công nghệ thông tin' },
+          { id: `${prefix}_7054`, loai, khoan, tmuc: '7054', label: 'Xây dựng phần mềm công nghệ thông tin' },
+          { id: `${prefix}_7099`, loai, khoan, tmuc: '7099', label: 'Chi khác' },
+          { id: `${prefix}_7750`, loai, khoan, muc: '7750', label: 'Chi khác', isSum: true, formula: [`${prefix}_7751`, `${prefix}_7753`, `${prefix}_7754`, `${prefix}_7756`, `${prefix}_7757`, `${prefix}_7761`, `${prefix}_7762`, `${prefix}_7763`, `${prefix}_7764`, `${prefix}_7765`, `${prefix}_7766`, `${prefix}_7767`, `${prefix}_7799`] },
+          { id: `${prefix}_7751`, loai, khoan, tmuc: '7751', label: 'Chênh lệch tỷ giá ngoại tệ ngân sách nhà nước' },
+          { id: `${prefix}_7753`, loai, khoan, tmuc: '7753', label: 'Chi khắc phục hậu quả thiên tai, thảm họa, dịch bệnh cho các đơn vị dự toán và cho các doanh nghiệp' },
+          { id: `${prefix}_7754`, loai, khoan, tmuc: '7754', label: 'Chi thưởng và chi phí xử lý các hành vi vi phạm pháp luật của các vụ xử lý không có thu hoặc thu không đủ chi' },
+          { id: `${prefix}_7756`, loai, khoan, tmuc: '7756', label: 'Chi các khoản phí và lệ phí' },
+          { id: `${prefix}_7757`, loai, khoan, tmuc: '7757', label: 'Chi bảo hiểm tài sản và phương tiện' },
+          { id: `${prefix}_7761`, loai, khoan, tmuc: '7761', label: 'Chi tiếp khách' },
+          { id: `${prefix}_7762`, loai, khoan, tmuc: '7762', label: 'Chi bồi thường thiệt hại cho các đối tượng bị oan do cơ quan tố tụng gây ra theo chế độ quy định' },
+          { id: `${prefix}_7763`, loai, khoan, tmuc: '7763', label: 'Chi bồi thường thiệt hại do công chức, viên chức nhà nước gây ra theo chế độ quy định' },
+          { id: `${prefix}_7764`, loai, khoan, tmuc: '7764', label: 'Chi lập quỹ khen thưởng theo chế độ quy định' },
+          { id: `${prefix}_7765`, loai, khoan, tmuc: '7765', label: 'Chi chênh lệch giá bán trái phiếu so với mệnh giá' },
+          { id: `${prefix}_7766`, loai, khoan, tmuc: '7766', label: 'Cấp bù học phí cho cơ sở giáo dục đào tạo theo chế độ' },
+          { id: `${prefix}_7767`, loai, khoan, tmuc: '7767', label: 'Đóng niên liễm cho các tổ chức quốc tế' },  
+          { id: `${prefix}_7799`, loai, khoan, tmuc: '7799', label: 'Các khoản chi khác' },
+          { id: `${prefix}_7850`, loai, khoan, muc: '7850', label: 'Chi cho công tác Đảng ở đơn vị', isSum: true, formula: [`${prefix}_7851`, `${prefix}_7852`, `${prefix}_7853`, `${prefix}_7854`, `${prefix}_7899`] },
+          { id: `${prefix}_7851`, loai, khoan, tmuc: '7851', label: 'Chi mua báo, tạp chí của Đảng' },
+          { id: `${prefix}_7852`, loai, khoan, tmuc: '7852', label: 'Chi tổ chức đại hội Đảng' },
+          { id: `${prefix}_7853`, loai, khoan, tmuc: '7853', label: 'Chi khen thưởng hoạt động công tác Đảng' },
+          { id: `${prefix}_7854`, loai, khoan, tmuc: '7854', label: 'Chi thanh toán phí khác, phụ cấp cấp ủy' },
+          { id: `${prefix}_7899`, loai, khoan, tmuc: '7899', label: 'Chi khác' },  
+          { id: `${prefix}_7900`, loai, khoan, muc: '7900', label: 'Chi cho các sự kiện lớn', isSum: true, formula: [`${prefix}_7901`, `${prefix}_7903`, `${prefix}_7949`] },
+          { id: `${prefix}_7901`, loai, khoan, tmuc: '7901', label: 'Chi bầu cử QH, HĐND' },
+          { id: `${prefix}_7903`, loai, khoan, tmuc: '7903', label: 'Chi kỷ niệm các ngày lễ lớn' },
+          { id: `${prefix}_7949`, loai, khoan, tmuc: '7949', label: 'Chi khác' },
+          { id: `${prefix}_7950`, loai, khoan, muc: '7950', label: 'Chi lập các quỹ', isSum: true, formula: [`${prefix}_7951`, `${prefix}_7952`, `${prefix}_7953`, `${prefix}_7954`, `${prefix}_7999`] },
+          { id: `${prefix}_7951`, loai, khoan, tmuc: '7951', label: 'Chi lập Quỹ bổ sung thu nhập' },
+          { id: `${prefix}_7952`, loai, khoan, tmuc: '7952', label: 'Chi lập Quỹ phúc lợi' },
+          { id: `${prefix}_7953`, loai, khoan, tmuc: '7953', label: 'Chi lập Quỹ khen thưởng' },
+          { id: `${prefix}_7954`, loai, khoan, tmuc: '7954', label: 'Chi lập Quỹ phát triển sự nghiệp' },
+          { id: `${prefix}_7999`, loai, khoan, tmuc: '7999', label: 'Chi lập các quỹ khác' },
+          { id: `${prefix}_8000`, loai, khoan, muc: '8000', label: 'Chi hỗ trợ giải quyết việc làm', isSum: true, formula: [`${prefix}_8006`] },
+          { id: `${prefix}_8006`, loai, khoan, tmuc: '8006', label: 'Chi tinh giản biên chế' }
         ];
+
+        const B01_STRUCTURE = [
+          { type: 'header', id: 'A_TOTAL', stt: 'A', label: 'A. NGÂN SÁCH NHÀ NƯỚC', isSum: true, formula: ['I_TOTAL', 'II_TOTAL', 'III_TOTAL'] },
+          { type: 'sub-header', id: 'I_TOTAL', stt: 'I', label: 'I. NGUỒN NGÂN SÁCH TRONG NƯỚC THUỘC NGÂN SÁCH CẤP...', isSum: true, formula: ['101', '108', '111', '114', '117', '120', '129'] },
+          { id: '101', stt: '1', label: 'Số dư kinh phí năm trước chuyển sang (101=102+105)', isSum: true, formula: ['102', '105'] },
+          { id: '102', stt: '1.1', label: 'Kinh phí được giao tự chủ (102=103+104)', isSum: true, formula: ['103', '104'] },
+          { id: '103', stt: '-', label: '- Kinh phí đã nhận' },
+          { id: '104', stt: '-', label: '- Dự toán còn dư ở Kho bạc' },
+          { id: '105', stt: '1.2', label: 'Kinh phí không được giao tự chủ (105= 106+107)', isSum: true, formula: ['106', '107'] },
+          { id: '106', stt: '-', label: '- Kinh phí đã nhận' },
+          { id: '107', stt: '-', label: '- Dự toán còn dư ở Kho bạc' },
+          { id: '108', stt: '2', label: 'Dự toán được giao trong năm (108=109+110)', isSum: true, formula: ['109', '110'] },
+          { id: '109', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '110', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '111', stt: '3', label: 'Tổng số được sử dụng trong năm (111=112+113)', isSum: true, formula: ['112', '113'] },
+          { id: '112', stt: '-', label: '- Kinh phí được giao tự chủ (112=102+109)', isSum: true, formula: ['102', '109'] },
+          { id: '113', stt: '-', label: '- Kinh phí không được giao tự chủ (113=105+110)', isSum: true, formula: ['105', '110'] },
+          { id: '114', stt: '4', label: 'Kinh phí thực nhận trong năm (114=115+116)', isSum: true, formula: ['115', '116'] },
+          { id: '115', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '116', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '117', stt: '5', label: 'Kinh phí đề nghị quyết toán (117=118+119)', isSum: true, formula: ['118', '119'] },
+          { id: '118', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '119', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '120', stt: '6', label: 'Kinh phí giảm trong năm (120=121+125)', isSum: true, formula: ['121', '125'] },
+          { id: '121', stt: '6.1', label: 'Kinh phí được giao tự chủ (121=122+123+124)', isSum: true, formula: ['122', '123', '124'] },
+          { id: '122', stt: '-', label: '- Đã nộp NSNN' },
+          { id: '123', stt: '-', label: '- Còn phải nộp NSNN (123=103+115-118-122-131)', isCalc: true },
+          { id: '124', stt: '-', label: '- Dự toán bị hủy (124=104+109-115-132)', isCalc: true },
+          { id: '125', stt: '6.2', label: 'Kinh phí không được giao tự chủ (125=126+127+128)', isSum: true, formula: ['126', '127', '128'] },
+          { id: '126', stt: '-', label: '- Đã nộp NSNN' },
+          { id: '127', stt: '-', label: '- Còn phải nộp NSNN (127=106+116-119-126-134)', isCalc: true },
+          { id: '128', stt: '-', label: '- Dự toán bị hủy (128=107+110-116-135)', isCalc: true },
+          { id: '129', stt: '7', label: 'Số dư kinh phí được phép chuyển năm sau (129=130+133)', isSum: true, formula: ['130', '133'] },
+          { id: '130', stt: '7.1', label: 'Kinh phí được giao tự chủ (130=131+132)', isSum: true, formula: ['131', '132'] },
+          { id: '131', stt: '-', label: '- Kinh phí đã nhận' },
+          { id: '132', stt: '-', label: '- Dự toán còn dư ở Kho bạc' },
+          { id: '133', stt: '7.2', label: 'Kinh phí không được giao tự chủ (133=134+135)', isSum: true, formula: ['134', '135'] },
+          { id: '134', stt: '-', label: '- Kinh phí đã nhận' },
+          { id: '135', stt: '-', label: '- Dự toán còn dư ở Kho bạc' },
+          { type: 'sub-header', id: 'II_TOTAL', stt: 'II', label: 'II. NGUỒN VỐN VIỆN TRỢ', isSum: true, formula: ['136', '139', '140', '143', '144', '145', '146'] },
+          { id: '136', stt: '1', label: 'Số dư kinh phí năm trước chuyển sang (136=137+138)', isSum: true, formula: ['137', '138'] },
+          { id: '137', stt: '1.1', label: '- Kinh phí đã nhận' },
+          { id: '138', stt: '1.2', label: '- Dự toán còn dư' },
+          { id: '139', stt: '2', label: 'Dự toán giao trong năm' },
+          { id: '140', stt: '3', label: 'Tổng đã nhận (140=141+142)', isSum: true, formula: ['141', '142'] },
+          { id: '141', stt: '3.1', label: '- Số đã ghi thu, ghi chi' },
+          { id: '142', stt: '3.2', label: '- Số chưa thực hiện ghi thu, ghi chi' },
+          { id: '143', stt: '4', label: 'Tổng được sử dụng (143=136+140)', isSum: true, formula: ['136', '140'] },
+          { id: '144', stt: '5', label: 'Kinh phí đề nghị quyết toán' },
+          { id: '145', stt: '6', label: 'Kinh phí giảm trong năm' },
+          { id: '146', stt: '7', label: 'Số dư chuyển năm sau (146=147+148)', isSum: true, formula: ['147', '148'], isCalc: true },
+          { id: '147', stt: '7.1', label: '- Kinh phí đã nhận' },
+          { id: '148', stt: '7.2', label: '- Dự toán còn dư' },
+          { type: 'sub-header', id: 'III_TOTAL', stt: 'III', label: 'III. NGUỒN VAY NỢ NƯỚC NGOÀI', isSum: true, formula: ['149', '152', '153', '154', '157', '158', '162'] },
+          { id: '149', stt: '1', label: 'Số dư năm trước', isSum: true, formula: ['150', '151'] },
+          { id: '150', stt: '-', label: '- Kinh phí đã ghi tạm ứng' },
+          { id: '151', stt: '-', label: '- Số dư dự toán' },
+          { id: '152', stt: '2', label: 'Dự toán được giao trong năm' },
+          { id: '153', stt: '3', label: 'Tổng số được sử dụng (153=149+152)', isSum: true, formula: ['149', '152'] },
+          { id: '154', stt: '4', label: 'Tổng đã nhận (154= 155+156)', isSum: true, formula: ['155', '156'] },
+          { id: '155', stt: '-', label: '- Số đã hạch toán tạm ứng NSNN' },
+          { id: '156', stt: '-', label: '- Số đã hạch toán ghi chi NSNN' },
+          { id: '157', stt: '5', label: 'Kinh phí đã sử dụng đề nghị quyết toán' },
+          { id: '158', stt: '6', label: 'Kinh phí giảm trong năm (158=159+160+161)', isSum: true, formula: ['159', '160', '161'] },
+          { id: '159', stt: '-', label: '- Đã nộp NSNN' },
+          { id: '160', stt: '-', label: '- Còn phải nộp NSNN (160=150+154-157-159-163)', isCalc: true },
+          { id: '161', stt: '-', label: '- Dự toán bị hủy (161= 151+152-154-164)', isCalc: true },
+          { id: '162', stt: '7', label: 'Số dư chuyển năm sau (162=163+164)', isSum: true, formula: ['163', '164'] },
+          { id: '163', stt: '-', label: '- Kinh phí đã ghi tạm ứng' },
+          { id: '164', stt: '-', label: '- Số dư dự toán' },
+          { id: '165', stt: '8', label: 'Số đã giải ngân, rút vốn chưa hạch toán NSNN' },
+          { type: 'header', id: 'B_TOTAL', stt: 'B', label: 'B. NGUỒN PHÍ ĐƯỢC KHẤU TRỪ ĐỂ LẠI', isSum: true, formula: ['166', '170', '173', '177', '180', '183', '193'] },
+          { id: '166', stt: '1', label: 'Số dư chưa sử dụng năm trước', isSum: true, formula: ['167', '168', '169'] },
+          { id: '167', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '168', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '169', stt: '-', label: '- Kinh phí chưa giao dự toán chi' },
+          { id: '170', stt: '2', label: 'Dự toán giao trong năm', isSum: true, formula: ['171', '172'] },
+          { id: '171', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '172', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '173', stt: '3', label: 'Số thu trong năm', isSum: true, formula: ['174', '175', '176'] },
+          { id: '174', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '175', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '176', stt: '-', label: '- Kinh phí chưa giao dự toán chi' },
+          { id: '177', stt: '4', label: 'Tổng số sử dụng', isSum: true, formula: ['178', '179'] },
+          { id: '178', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '179', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '180', stt: '5', label: 'Số đề nghị quyết toán', isSum: true, formula: ['181', '182'] },
+          { id: '181', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '182', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '183', stt: '6', label: 'Kinh phí giảm trong năm', isSum: true, formula: ['184', '187', '190'] },
+          { id: '184', stt: '6.1', label: 'Kinh phí được giao tự chủ (184=185+186)', isSum: true, formula: ['185', '186'] },
+          { id: '185', stt: '-', label: '- Đã nộp NSNN' },
+          { id: '186', stt: '-', label: '- Còn phải nộp NSNN' },
+          { id: '193', stt: '7', label: 'Số dư chuyển năm sau', isSum: true, formula: ['194', '195', '196'] },
+          { id: '194', stt: '-', label: '- Kinh phí tự chủ (194=178-181-184)', isCalc: true },
+          { id: '195', stt: '-', label: '- Kinh phí không tự chủ (195=179-182-187)', isCalc: true },
+          { id: '196', stt: '-', label: '- Kinh phí chưa giao dự toán chi' },
+          { type: 'header', id: 'C_TOTAL', stt: 'C', label: 'C. NGUỒN KINH PHÍ HOẠT ĐỘNG NGHIỆP VỤ', isSum: true, formula: ['197', '200', '203', '206', '209', '212', '215'] },
+          { id: '197', stt: '1', label: 'Số dư chưa sử dụng năm trước', isSum: true, formula: ['198', '199'] },
+          { id: '198', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '199', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '200', stt: '2', label: 'Dự toán giao trong năm', isSum: true, formula: ['201', '202'] },
+          { id: '201', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '202', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '203', stt: '3', label: 'Số thu trong năm', isSum: true, formula: ['204', '205'] },
+          { id: '204', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '205', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '206', stt: '4', label: 'Tổng số sử dụng', isSum: true, formula: ['207', '208'] },
+          { id: '207', stt: '-', label: '- Kinh phí tự chủ (207=198+204)', isSum: true, formula: ['198', '204'] },
+          { id: '208', stt: '-', label: '- Kinh phí không tự chủ (208=199+205)', isSum: true, formula: ['199', '205'] },
+          { id: '209', stt: '5', label: 'Số đề nghị quyết toán', isSum: true, formula: ['210', '211'] },
+          { id: '210', stt: '-', label: '- Kinh phí được giao tự chủ' },
+          { id: '211', stt: '-', label: '- Kinh phí không được giao tự chủ' },
+          { id: '215', stt: '7', label: 'Số dư chuyển năm sau', isSum: true, formula: ['216', '217'] },
+          { id: '216', stt: '-', label: '- Kinh phí tự chủ (216=207-210-213)', isCalc: true },
+          { id: '217', stt: '-', label: '- Kinh phí không tự chủ (217=208-211-214)', isCalc: true },
+        ];
+
+        const F01_STRUCTURE = (() => {
+          const s = [];
+          s.push({ type: 'header', label: 'TỔNG CỘNG NGUỒN NGÂN SÁCH NHÀ NƯỚC', id: 'TOTAL_F01', isSum: true, formula: ['F_I', 'F_II'] });
+          const sectors = [
+            { name: 'I. KINH PHÍ TỰ CHỦ / KINH PHÍ THƯỜNG XUYÊN', id: 'F_I', sub: [
+              { l: '070', k: '074', n: '1. Chi sự nghiệp giáo dục đào tạo (TC)', p: 'tc1' },
+              { l: '070', k: '083', n: '2. Chi sự nghiệp giáo dục đào tạo (TC)', p: 'tc2' },
+              { l: '100', k: '103', n: '3. Chi sự nghiệp khoa học công nghệ (TC)', p: 'tc3' },
+              { l: '160', k: '171', n: '4. Chi sự nghiệp văn hóa thông tin (TC)', p: 'tc4' },
+              { l: '280', k: '314', n: '5. Chi sự nghiệp kinh tế (TC)', p: 'tc5' },
+              { l: '280', k: '338', n: '6. Chi sự nghiệp kinh tế (TC)', p: 'tc6' },
+              { l: '340', k: '341', n: '7. Chi quản lý hành chính (TC)', p: 'tc7' }
+            ]},
+            { name: 'II. KINH PHÍ KHÔNG TỰ CHỦ / KINH PHÍ KHÔNG THƯỜNG XUYÊN', id: 'F_II', sub: [
+              { l: '070', k: '074', n: '1. Chi sự nghiệp giáo dục đào tạo (KTC)', p: 'ktc1' },
+              { l: '070', k: '083', n: '2. Chi sự nghiệp giáo dục đào tạo (KTC)', p: 'ktc2' },
+              { l: '100', k: '103', n: '3. Chi sự nghiệp khoa học công nghệ (KTC)', p: 'ktc3' },
+              { l: '160', k: '171', n: '4. Chi sự nghiệp văn hóa thông tin (KTC)', p: 'ktc4' },
+              { l: '280', k: '314', n: '5. Chi sự nghiệp kinh tế (KTC)', p: 'ktc5' },
+              { l: '280', k: '338', n: '6. Chi sự nghiệp kinh tế (KTC)', p: 'ktc6' },
+              { l: '340', k: '341', n: '7. Chi quản lý hành chính (KTC)', p: 'ktc7' }
+            ]}
+          ];
+          sectors.forEach(group => {
+            s.push({ type: 'sub-header', label: group.name, id: group.id, isSum: true, formula: group.sub.map(ss => `h_${ss.p}`) });
+            group.sub.forEach(ss => {
+              const items = MLNS_TEMPLATE(ss.l, ss.k, ss.p);
+              s.push({ id: `h_${ss.p}`, loai: ss.l, khoan: ss.k, label: ss.n, isHeader: true, isSum: true, formula: items.filter(i=>i.muc).map(i=>i.id) });
+              s.push(...items);
+            });
+          });
+          return s;
+        })();
+
+        const B02_STRUCTURE = [
+          { type: 'header', id: 'SEC_I', stt: 'I', label: 'I. Kiến nghị các năm trước còn tồn tại chưa xử lý', isSum: true, formula: ['01', '02', '03', '10'] },
+          { id: '01', stt: '1', label: 'Các khoản thu phải nộp NSNN', canAddDetail: true },
+          { id: '02', stt: '2', label: 'Các khoản ghi thu, ghi chi vào NSNN', canAddDetail: true },
+          { id: '03', stt: '3', label: 'Số chi sai chế độ phải xuất toán', isSum: true, formula: ['04', '07'] },
+          { id: '04', stt: 'a', label: 'Nộp trả NSNN:', isSum: true, formula: ['05', '06'] },
+          { id: '05', stt: '-', label: 'Trong đó: - Chi đầu tư' },
+          { id: '06', stt: '-', label: '            - Chi thường xuyên' },
+          { id: '07', stt: 'b', label: 'Cơ quan tài chính giảm trừ cấp phát', isSum: true, formula: ['08', '09'] },
+          { id: '08', stt: '-', label: 'Trong đó: - Chi đầu tư' },
+          { id: '09', stt: '-', label: '            - Chi thường xuyên' },
+          { id: '10', stt: '4', label: 'Bổ sung quyết toán ngân sách năm nay', isSum: true, formula: ['11', '12'] },
+          { id: '11', stt: '-', label: 'Trong đó: - Chi đầu tư' },
+          { id: '12', stt: '-', label: '            - Chi thường xuyên' },
+          { type: 'header', id: 'SEC_II', stt: 'II', label: 'II. Kiến nghị năm nay', isSum: true, formula: ['13', '14', '15', '22'] },
+          { id: '13', stt: '1', label: 'Các khoản thu phải nộp NSNN', canAddDetail: true },
+          { id: '14', stt: '2', label: 'Các khoản ghi thu, ghi chi vào NSNN', canAddDetail: true },
+          { id: '15', stt: '3', label: 'Số chi sai chế độ phải xuất toán', isSum: true, formula: ['16', '19'] },
+          { id: '16', stt: 'a', label: 'Nộp trả NSNN:', isSum: true, formula: ['17', '18'] },
+          { id: '17', stt: '-', label: 'Trong đó: - Chi đầu tư' },
+          { id: '18', stt: '-', label: '            - Chi thường xuyên' },
+          { id: '19', stt: 'b', label: 'Cơ quan tài chính giảm trừ cấp phát', isSum: true, formula: ['20', '21'] },
+          { id: '20', stt: '-', label: 'Trong đó: - Chi đầu tư' },
+          { id: '21', stt: '-', label: '            - Chi thường xuyên' },
+          { id: '22', stt: '4', label: 'Chuyển quyết toán ngân sách năm sau', isSum: true, formula: ['23', '24'] },
+          { id: '23', stt: '-', label: 'Trong đó: - Chi đầu tư' },
+          { id: '24', stt: '-', label: '            - Chi thường xuyên' },
+          { type: 'header', id: 'SEC_III', stt: 'III', label: 'III. Các vấn đề khác liên quan cần giải trình' }
+        ];
+
+        const DATA_KEYS_B01 = ['total', 'l070_total', 'k074', 'k083', 'k085', 'k103', 'k171', 'k278', 'l280_total', 'k314', 'k332', 'k338', 'k341'];
+        const DATA_KEYS_F01 = ['total', 'ns_tn', 'ns_vt', 'ns_vn', 'phi', 'khac'];
+        const DATA_KEYS_B02 = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10', 'c11', 'c12', 'c13', 'c14', 'c15', 'note'];
+
+        const DEFAULT_ROW_B01 = DATA_KEYS_B01.reduce((acc, k) => ({ ...acc, [k]: 0 }), {});
+        const DEFAULT_ROW_F01 = DATA_KEYS_F01.reduce((acc, k) => ({ ...acc, [k]: 0 }), {});
+        const DEFAULT_ROW_B02 = DATA_KEYS_B02.reduce((acc, k) => ({ ...acc, [k]: k === 'note' ? '' : 0 }), {});
+
+        // --- COMPONENTS ---
+        const NumericCell = memo(({ value, onCommit, isCalculated, isSummary }) => {
+          const [localVal, setLocalVal] = useState(value || 0);
+          useEffect(() => { setLocalVal(value || 0); }, [value]);
+          if (isCalculated || isSummary) {
+            return <td className="p-1 border-r border-b border-slate-200 bg-slate-50 font-bold text-indigo-800 text-right">{Number(value || 0).toLocaleString()}</td>;
+          }
+          return (
+            <td className="p-1 border-r border-b border-slate-200">
+              <input type="number" value={localVal === 0 ? '' : localVal} 
+                onChange={(e) => setLocalVal(parseFloat(e.target.value) || 0)}
+                onBlur={() => onCommit(localVal)}
+                className="w-full bg-transparent border-none text-right px-1 font-medium text-slate-900 outline-none" />
+            </td>
+          );
+        });
+
+        const NoteCell = memo(({ value, onCommit, isSummary }) => {
+          const [localVal, setLocalVal] = useState(value || '');
+          useEffect(() => { setLocalVal(value || ''); }, [value]);
+          if (isSummary) return <td className="p-1 border-r border-b border-slate-200 text-left align-top whitespace-pre-wrap">{String(value || '')}</td>;
+          return (
+            <td className="p-1 border-r border-b border-slate-200">
+              <textarea rows={1} value={localVal} onChange={(e) => setLocalVal(e.target.value)} onBlur={() => onCommit(localVal)} className="w-full bg-transparent border-none text-left px-1 font-medium text-slate-900 outline-none" />
+            </td>
+          );
+        });
+
+        const B01Row = memo(({ row, data, viewMode, onCellChange }) => {
+          const isHeaderType = row.type === 'header' || row.type === 'sub-header';
+          if (isHeaderType) {
+            return (
+              <tr className={`${row.type === 'header' ? 'bg-indigo-900 text-white' : 'bg-slate-200 text-slate-800'} font-black`}>
+                <td className="sticky left-0 bg-inherit p-3 border-r border-b border-slate-300 text-center z-10">{row.stt || ""}</td>
+                <td className="sticky left-14 bg-inherit p-3 border-r border-b border-slate-300 uppercase text-left pl-4 leading-tight z-10">{row.label}</td>
+                <td className="sticky left-[394px] bg-inherit p-3 border-r border-b border-slate-300 text-center font-mono text-[10px] z-10">{row.id || ""}</td>
+                <td className="sticky left-[466px] bg-inherit p-3 border-r border-b border-slate-300 text-right italic z-10">{Number(data.total || 0).toLocaleString()}</td>
+                {DATA_KEYS_B01.slice(1).map(k => <td key={k} className="p-1 border-r border-b border-slate-300 text-right italic">{Number(data[k] || 0).toLocaleString()}</td>)}
+              </tr>
+            );
+          }
+          return (
+            <tr className={`hover:bg-slate-50 transition-colors ${row.isSum ? 'bg-indigo-50/20' : ''}`}>
+              <td className="sticky left-0 z-10 bg-white p-2 border-r border-b border-slate-200 text-center font-bold text-slate-400">{row.stt}</td>
+              <td className="sticky left-14 z-10 bg-white p-2 border-r border-b border-slate-200 font-semibold text-slate-700 truncate text-left pl-4 leading-tight">{row.label}</td>
+              <td className="sticky left-[394px] z-10 bg-slate-50 p-2 border-r border-b border-slate-200 text-center font-mono text-[10px] text-slate-400">{row.id}</td>
+              <td className="sticky left-[466px] z-10 bg-indigo-50 p-2 border-r border-b border-indigo-100 text-right font-black text-indigo-700">{Number(data.total || 0).toLocaleString()}</td>
+              {DATA_KEYS_B01.slice(1).map(k => <NumericCell key={k} value={data[k]} isCalculated={k === 'l070_total' || k === 'l280_total' || row.isSum || row.isCalc} isSummary={viewMode === 'summary'} onCommit={(val) => onCellChange('B01', row.id, k, val)} />)}
+            </tr>
+          );
+        });
 
         // --- MAIN APP COMPONENT ---
         const App = () => {
@@ -192,18 +549,21 @@
           const [selectedUnit, setSelectedUnit] = useState(null);
           const [allUnitsData, setAllUnitsData] = useState({});
           const [activeTab, setActiveTab] = useState('B01');
+          const [formData, setFormData] = useState({ b01: {}, f01: {}, b02: {}, b02_meta: {} });
 
           useEffect(() => {
-            // Tắt màn hình nạp ngay khi component mount thành công
-            const loader = document.getElementById('loading-screen');
-            if (loader) {
-                loader.style.opacity = '0';
-                setTimeout(() => loader.style.display = 'none', 500);
-            }
+            const hideLoader = () => {
+                const loader = document.getElementById('loading-screen');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    setTimeout(() => loader.style.display = 'none', 500);
+                }
+            };
+            hideLoader();
 
             const initAuth = async () => {
               try {
-                if (firebaseConfig.apiKey !== "demo" && auth) {
+                if (firebaseConfig.apiKey !== "demo-key" && auth) {
                     await signInAnonymously(auth);
                 } else {
                     setLoading(false);
@@ -224,51 +584,24 @@
             }
           }, []);
 
-          // Sync data from firestore
-          useEffect(() => {
-            if (!user || firebaseConfig.apiKey === "demo" || !db) return;
-            try {
-                const q = collection(db, 'artifacts', appId, 'public', 'data', 'reports');
-                return onSnapshot(q, (snapshot) => {
-                  const data = {};
-                  snapshot.forEach(doc => { data[doc.id] = doc.data(); });
-                  setAllUnitsData(data);
-                }, (err) => console.error("Snapshot error:", err));
-            } catch (e) { console.error(e); }
-          }, [user]);
-
           const handleLogin = (e) => {
             e.preventDefault();
             setLoginError('');
-            if (loginForm.username === 'Admin' && loginForm.password === '@KHTC2026') { 
-                setAuthSession({ role: 'admin', unitName: null }); 
-                return; 
-            }
+            if (loginForm.username === 'Admin' && loginForm.password === '@KHTC2026') { setAuthSession({ role: 'admin', unitName: null }); return; }
             const foundUnit = UNITS.find(u => u === loginForm.username);
-            if (foundUnit && loginForm.password === '123456') { 
-                setAuthSession({ role: 'unit', unitName: foundUnit }); 
-                setSelectedUnit(foundUnit); 
-                return; 
-            }
+            if (foundUnit && loginForm.password === '123456') { setAuthSession({ role: 'unit', unitName: foundUnit }); setSelectedUnit(foundUnit); return; }
             setLoginError('Tên đăng nhập hoặc mật khẩu không chính xác.');
           };
 
-          const handleLogout = () => {
-            setAuthSession(null); 
-            setSelectedUnit(null); 
-            setLoginForm({ username: '', password: '' });
-          };
+          const handleLogout = () => { setAuthSession(null); setSelectedUnit(null); setLoginForm({ username: '', password: '' }); };
 
           if (!authSession) {
             return (
               <div className="h-screen bg-slate-100 flex items-center justify-center p-4">
-                <div className="bg-white p-10 rounded-[3rem] shadow-2xl border w-full max-w-md">
+                <div className="bg-white p-10 rounded-[3rem] shadow-2xl border w-full max-w-md animate-in fade-in zoom-in duration-300">
                   <div className="flex flex-col items-center gap-4 mb-8 text-center">
                     <div className="bg-indigo-600 p-5 rounded-3xl shadow-xl"><Calculator className="text-white w-10 h-10" /></div>
-                    <div>
-                      <h1 className="font-black uppercase text-2xl text-indigo-950">Hệ thống quyết toán</h1>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase mt-2">BỘ DÂN TỘC VÀ TÔN GIÁO</p>
-                    </div>
+                    <div><h1 className="font-black uppercase text-2xl text-indigo-950">Hệ thống quyết toán</h1><p className="text-[10px] text-slate-500 font-bold uppercase mt-2">BỘ DÂN TỘC VÀ TÔN GIÁO</p></div>
                   </div>
                   <form onSubmit={handleLogin} className="flex flex-col gap-4">
                     <input type="text" required value={loginForm.username} onChange={(e) => setLoginForm({...loginForm, username: e.target.value})} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 font-bold outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Tên đăng nhập" />
@@ -286,8 +619,7 @@
               <header className="bg-white border-b p-4 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-4">
                   <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-lg"><Calculator className="text-white w-6 h-6" /></div>
-                  <div>
-                    <h1 className="text-sm font-black uppercase text-indigo-950">Quyết toán 2025</h1>
+                  <div><h1 className="text-sm font-black uppercase text-indigo-950">Quyết toán 2025</h1>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[9px] text-indigo-600 font-bold uppercase flex items-center gap-1">
                         {authSession.role === 'admin' ? <ShieldCheck size={10}/> : <User size={10}/>}
@@ -296,21 +628,17 @@
                     </div>
                   </div>
                 </div>
-                <button onClick={handleLogout} className="px-4 py-2 rounded-xl text-xs font-black text-rose-500 hover:bg-rose-50 flex items-center gap-2 transition-all">
-                  <LogOut size={16}/> THOÁT
-                </button>
+                <button onClick={handleLogout} className="px-4 py-2 rounded-xl text-xs font-black text-rose-500 hover:bg-rose-50 flex items-center gap-2 transition-all uppercase"><LogOut size={16}/> Thoát</button>
               </header>
 
               <main className="flex-1 p-6 overflow-hidden flex flex-col items-center justify-center">
                 <div className="text-center max-w-xl">
                     <FileText size={64} className="text-indigo-200 mx-auto mb-6" />
                     <h2 className="text-2xl font-black text-slate-800 uppercase mb-2">Hệ thống đã sẵn sàng</h2>
-                    <p className="text-slate-500 font-medium mb-8">Ứng dụng báo cáo quyết toán đang trong quá trình đồng bộ hóa dữ liệu. Vui lòng kiểm tra lại cấu hình kết nối nếu dữ liệu chưa hiển thị.</p>
+                    <p className="text-slate-500 font-medium mb-8">Dữ liệu từ đơn vị {selectedUnit || '...'} đang được đồng bộ. Vui lòng chọn biểu báo cáo để tiếp tục.</p>
                     <div className="flex flex-wrap justify-center gap-3">
                         {['B01', 'F01', 'B02'].map(t => (
-                            <button key={t} onClick={() => setActiveTab(t)} className={`px-8 py-3 rounded-2xl font-black text-[10px] border-2 transition-all uppercase ${activeTab === t ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl' : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-400'}`}>
-                                Biểu {t}/BCQT
-                            </button>
+                            <button key={t} onClick={() => setActiveTab(t)} className={`px-8 py-3 rounded-2xl font-black text-[10px] border-2 transition-all uppercase ${activeTab === t ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl' : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-400'}`}>Biểu {t}/BCQT</button>
                         ))}
                     </div>
                 </div>
@@ -318,7 +646,7 @@
 
               <footer className="bg-slate-900 text-slate-500 p-3 text-center text-[10px] uppercase font-black border-t border-slate-800 flex items-center justify-center gap-4">
                  <span>Hệ thống Báo cáo quyết toán - Vụ KHTC 2025</span>
-                 <span className="text-indigo-500">Build K.22.5.12-GOLD</span>
+                 <span className="text-indigo-500">Build K.22.5.13-READY</span>
               </footer>
             </div>
           );
@@ -327,19 +655,14 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
 
-        // Chống treo: Tự động tắt loader sau 5s và hiện nút skip sau 3s
+        // Tự động tắt loader sau 3 giây dự phòng
         setTimeout(() => {
-            const btn = document.getElementById('skip-loader');
-            if (btn) btn.style.display = 'block';
-        }, 3000);
-
-        document.getElementById('skip-loader').onclick = () => {
             const loader = document.getElementById('loading-screen');
-            if (loader) {
+            if (loader && loader.style.display !== 'none') {
                 loader.style.opacity = '0';
                 setTimeout(() => loader.style.display = 'none', 500);
             }
-        };
+        }, 3000);
     </script>
 </body>
 </html>
